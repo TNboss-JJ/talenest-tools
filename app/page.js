@@ -14,7 +14,7 @@ const TOOLS = [
   {
     id: "content", icon: "📚", name: "Content Vault", path: "/content",
     desc: "동화 44개, 워크북 1176장, 감정송 49곡 에셋 관리",
-    status: "planned", priority: "P0",
+    status: "live", priority: "P0",
     tech: "Supabase Storage + 메타데이터 DB",
     features: ["에셋 검색 (감정/스테이지/캐릭터별)", "버전 관리", "사용 현황 추적", "미리보기", "캐릭터별 필터", "다운로드 패키지 생성"],
     phase: 1
@@ -22,7 +22,7 @@ const TOOLS = [
   {
     id: "crm", icon: "🤝", name: "Investor CRM", path: "/crm",
     desc: "투자자·파트너 연락처, 미팅 이력, 파이프라인 관리",
-    status: "planned", priority: "P1",
+    status: "live", priority: "P1",
     tech: "Supabase + Email 연동",
     features: ["연락처 관리", "미팅 노트 + 타임라인", "투자 파이프라인 단계", "팔로업 리마인더", "이메일 템플릿", "VC 리서치 노트"],
     phase: 2
@@ -54,7 +54,7 @@ const TOOLS = [
   {
     id: "feedback", icon: "💬", name: "Feedback Hub", path: "/feedback",
     desc: "PoC 데모 피드백 수집, 감성 분석, 인사이트 대시보드",
-    status: "planned", priority: "P1",
+    status: "live", priority: "P1",
     tech: "Claude API + 설문 폼",
     features: ["피드백 폼 생성", "감성 분석 (AI)", "NPS 스코어", "기능 요청 투표", "사용자 세그먼트별 분석", "인사이트 리포트"],
     phase: 2
@@ -66,6 +66,22 @@ const TOOLS = [
     tech: "Vercel Analytics + Cron",
     features: ["업타임 체크 (5분 간격)", "응답 시간 그래프", "SSL 인증서 만료 알림", "다운 알림 (Slack/Email)", "도메인별 상태", "월간 가용성 리포트"],
     phase: 3
+  },
+  {
+    id: "map-scraper", icon: "🗺️", name: "Map Scraper", path: "/map-scraper",
+    desc: "Google Maps에서 어린이집/유치원 검색, AI 적합도 분석, CRM 자동 저장",
+    status: "live", priority: "P1",
+    tech: "Google Places API + Claude AI",
+    features: ["지역+키워드 기관 검색", "전화번호/웹사이트 수집", "TaleNest 적합도 AI 분석", "CRM 리드 자동 저장"],
+    phase: 2
+  },
+  {
+    id: "import", icon: "📥", name: "CSV Import", path: "/import",
+    desc: "Airtable/엑셀 CSV 일괄 업로드, AI 컬럼 자동 매핑",
+    status: "live", priority: "P1",
+    tech: "Claude AI + CSV Parser",
+    features: ["연락처/지출/리드 일괄 임포트", "한국어 헤더 자동 인식", "컬럼 자동 매핑", "미리보기 후 저장"],
+    phase: 1
   }
 ];
 
