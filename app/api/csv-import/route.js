@@ -9,7 +9,7 @@ const TABLE_SCHEMAS = {
   },
   expenses: {
     fields: ["date", "vendor", "description", "amount", "currency", "category", "tax_deductible", "source_type", "source_file", "notes"],
-    required: ["vendor", "amount"],
+    required: ["vendor"],
     defaults: { currency: "USD", category: "기타", tax_deductible: false, source_type: "card_statement" }
   },
   leads: {
@@ -19,20 +19,67 @@ const TABLE_SCHEMAS = {
   }
 };
 
+const KNOWN_MAPPINGS = {
+  expenses: {
+    "항목명": "vendor", "이름": "vendor", "name": "vendor",
+    "날짜": "date", "date": "date", "결제일": "date",
+    "금액": "amount", "amount": "amount", "가격": "amount", "price": "amount",
+    "유형": "description", "type": "description", "종류": "description",
+    "지출 분류": "category", "분류": "category", "category": "category",
+    "결제수단": "notes", "payment": "notes",
+    "도구/사이트명": "description", "도구": "description",
+    "활용 목적": "notes", "목적": "notes", "purpose": "notes",
+    "비고": "notes", "memo": "notes", "note": "notes", "notes": "notes",
+    "통화": "currency", "currency": "currency",
+    "관련 프로젝트": "source_file",
+  },
+  contacts: {
+    "이름": "name", "name": "name", "성명": "name",
+    "이메일": "email", "email": "email", "메일": "email",
+    "전화": "phone", "phone": "phone", "연락처": "phone",
+    "회사": "company", "company": "company", "회사명": "company", "기관": "company",
+    "직함": "title", "title": "title", "직위": "title", "role": "title",
+    "링크드인": "linkedin_url", "linkedin": "linkedin_url",
+    "웹사이트": "website_url", "website": "website_url", "홈페이지": "website_url",
+    "메모": "notes", "노트": "notes", "notes": "notes", "비고": "notes",
+    "유형": "type", "type": "type", "구분": "type",
+    "단계": "stage", "stage": "stage", "상태": "stage",
+    "점수": "score", "score": "score",
+    "태그": "tags", "tags": "tags",
+  },
+  leads: {
+    "이름": "name", "name": "name",
+    "회사": "company", "company": "company",
+    "직함": "title", "title": "title",
+    "이메일": "email", "email": "email",
+    "링크드인": "linkedin_url", "linkedin": "linkedin_url",
+    "웹사이트": "website_url", "website": "website_url",
+    "출처": "source_url", "source": "source_url",
+    "점수": "fit_score", "score": "fit_score",
+    "사유": "fit_reason", "reason": "fit_reason",
+    "상태": "status", "status": "status",
+  }
+};
+
+const CATEGORY_MAP = {
+  "초기설정비": "기타",
+  "고정비(매달)": "SaaS/구독",
+  "고정비(매년)": "SaaS/구독",
+  "일시비": "기타",
+  "법적/행정": "법무/상표",
+  "도구/툴": "SaaS/구독",
+  "교통": "교통/출장",
+  "식비": "식비/회의비",
+  "마케팅": "마케팅/광고",
+  "클라우드": "클라우드/호스팅",
+  "도메인": "도메인/DNS",
+  "디자인": "디자인도구",
+  "교육": "교육/컨퍼런스",
+};
+
 const SYSTEM_PROMPT = `You are a CSV column mapper. Given CSV headers and a target database schema, map each CSV column to the correct database field.
-
-Rules:
-- Match by meaning, not exact name (e.g. "회사명" or "Company" → "company", "이름" or "Name" → "name", "금액" or "Amount" → "amount")
-- Korean and English headers both work
-- If a column doesn't match any field, set it to null
-- Return a JSON object mapping CSV header → database field (or null)
-
-Example input: CSV headers: ["이름", "회사", "이메일", "투자단계", "메모"]
-Target fields: ["name", "email", "company", "title", "stage", "notes"]
-
-Example output: {"이름": "name", "회사": "company", "이메일": "email", "투자단계": "stage", "메모": "notes"}
-
-Respond ONLY with a valid JSON object. No markdown, no backticks.`;
+Match by meaning (Korean or English). Return a JSON object: { "csv_header": "db_field" or null }.
+Respond ONLY with valid JSON. No markdown.`;
 
 export async function POST(request) {
   const supabase = await createClient();
@@ -42,57 +89,96 @@ export async function POST(request) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
 
   try {
-    const { table, csvText, rows, headers, mapping: manualMapping } = await request.json();
+    const { table, csvText } = await request.json();
     const schema = TABLE_SCHEMAS[table];
-    if (!schema) return NextResponse.json({ error: "Invalid table" }, { status: 400 });
-
-    // Step 1: If rows already parsed and mapping provided, skip to insert
-    if (rows && manualMapping) {
-      const records = mapAndInsert(rows, manualMapping, schema, user.id);
-      const { data, error } = await supabase.from(table).insert(records).select();
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      return NextResponse.json({ inserted: data.length, records: data });
-    }
-
-    // Step 2: Parse CSV text
+    if (!schema) return NextResponse.json({ error: "Invalid table: " + table }, { status: 400 });
     if (!csvText) return NextResponse.json({ error: "csvText required" }, { status: 400 });
 
-    const lines = csvText.trim().split("\n");
-    if (lines.length < 2) return NextResponse.json({ error: "CSV needs header + at least 1 row" }, { status: 400 });
+    // Clean BOM and normalize line endings
+    const cleaned = csvText.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
-    const parsedHeaders = parseCSVLine(lines[0]);
-    const parsedRows = lines.slice(1).map(line => {
-      const vals = parseCSVLine(line);
-      const obj = {};
-      parsedHeaders.forEach((h, i) => { obj[h] = vals[i] || ""; });
-      return obj;
-    });
+    // Parse CSV properly
+    const { headers, rows } = parseCSV(cleaned);
 
-    // Step 3: Auto-map with Claude (or simple matching if no API key)
-    let mapping;
-    if (apiKey) {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 500,
-          system: SYSTEM_PROMPT,
-          messages: [{ role: "user", content: `CSV headers: ${JSON.stringify(parsedHeaders)}\nTarget fields: ${JSON.stringify(schema.fields)}` }]
-        })
-      });
-      const data = await res.json();
-      const text = data.content?.map(b => b.text || "").join("") || "{}";
-      mapping = JSON.parse(text.replace(/```json|```/g, "").trim());
-    } else {
-      mapping = simpleMatch(parsedHeaders, schema.fields);
+    if (headers.length === 0 || rows.length === 0) {
+      return NextResponse.json({ error: "CSV needs header + at least 1 data row", headers }, { status: 400 });
     }
 
-    // Step 4: Insert
-    const records = mapAndInsert(parsedRows, mapping, schema, user.id);
+    // Map columns: try known mappings first, fall back to Claude
+    let mapping = knownMapping(headers, table);
+    const unmapped = headers.filter(h => !mapping[h]);
+
+    if (unmapped.length > 0 && apiKey) {
+      try {
+        const aiMapping = await claudeMap(unmapped, schema.fields, apiKey);
+        Object.assign(mapping, aiMapping);
+      } catch (e) {
+        // Claude failed, continue with what we have
+      }
+    }
+
+    // Build records
+    const records = rows
+      .map(row => {
+        const record = { user_id: user.id };
+        Object.entries(schema.defaults).forEach(([k, v]) => { record[k] = v; });
+
+        Object.entries(mapping).forEach(([csvCol, dbField]) => {
+          if (!dbField || row[csvCol] === undefined || row[csvCol] === "") return;
+          let val = row[csvCol].trim();
+
+          if (dbField === "amount") {
+            val = val.replace(/[$,₩€£¥\s]/g, "");
+            val = parseFloat(val) || 0;
+          }
+          else if (dbField === "score" || dbField === "fit_score") {
+            val = parseInt(val) || 0;
+          }
+          else if (dbField === "tax_deductible") {
+            val = ["true", "yes", "1", "예", "o", "checked"].includes(String(val).toLowerCase());
+          }
+          else if (dbField === "tags" && typeof val === "string") {
+            val = val.split(",").map(t => t.trim()).filter(Boolean);
+          }
+          else if (dbField === "date") {
+            val = normalizeDate(val);
+          }
+          else if (dbField === "category" && table === "expenses") {
+            val = mapCategory(val);
+          }
+
+          // For notes, concat multiple fields
+          if (dbField === "notes" && record.notes) {
+            record.notes += " | " + val;
+          } else {
+            record[dbField] = val;
+          }
+        });
+
+        // Currency detection from amount string
+        if (table === "expenses") {
+          const amountRaw = Object.entries(mapping).find(([_, db]) => db === "amount");
+          if (amountRaw) {
+            const rawVal = row[amountRaw[0]] || "";
+            if (rawVal.includes("₩") || rawVal.includes("원")) record.currency = "KRW";
+            else if (rawVal.includes("$")) record.currency = "USD";
+            else if (rawVal.includes("€")) record.currency = "EUR";
+          }
+          record.source_type = "card_statement";
+        }
+
+        const hasRequired = schema.required.every(f => record[f]);
+        return hasRequired ? record : null;
+      })
+      .filter(Boolean);
 
     if (records.length === 0) {
-      return NextResponse.json({ error: "No valid records to insert", mapping, headers: parsedHeaders }, { status: 400 });
+      return NextResponse.json({
+        error: "No valid records found. Check column mapping.",
+        mapping,
+        headers,
+        sample_row: rows[0]
+      }, { status: 400 });
     }
 
     const { data: inserted, error: dbErr } = await supabase.from(table).insert(records).select();
@@ -100,9 +186,9 @@ export async function POST(request) {
 
     return NextResponse.json({
       inserted: inserted.length,
-      total_rows: parsedRows.length,
+      total_rows: rows.length,
       mapping,
-      headers: parsedHeaders,
+      headers,
       records: inserted
     });
 
@@ -111,46 +197,128 @@ export async function POST(request) {
   }
 }
 
-function mapAndInsert(rows, mapping, schema, userId) {
-  return rows
-    .map(row => {
-      const record = { user_id: userId, ...schema.defaults };
-      Object.entries(mapping).forEach(([csvCol, dbField]) => {
-        if (dbField && row[csvCol] !== undefined && row[csvCol] !== "") {
-          let val = row[csvCol];
-          if (dbField === "amount" || dbField === "score" || dbField === "fit_score") val = parseFloat(val) || 0;
-          if (dbField === "tax_deductible") val = ["true", "yes", "1", "예", "o"].includes(String(val).toLowerCase());
-          if (dbField === "tags" && typeof val === "string") val = val.split(",").map(t => t.trim());
-          record[dbField] = val;
-        }
-      });
-      const hasRequired = schema.required.every(f => record[f]);
-      return hasRequired ? record : null;
-    })
-    .filter(Boolean);
+function parseCSV(text) {
+  const lines = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') {
+      if (inQuotes && text[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === "\n" && !inQuotes) {
+      lines.push(current);
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim()) lines.push(current);
+
+  if (lines.length < 2) return { headers: [], rows: [] };
+
+  const headers = splitCSVLine(lines[0]);
+  const rows = lines.slice(1)
+    .filter(line => line.trim())
+    .map(line => {
+      const vals = splitCSVLine(line);
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = (vals[i] || "").trim(); });
+      return obj;
+    });
+
+  return { headers, rows };
 }
 
-function parseCSVLine(line) {
+function splitCSVLine(line) {
   const result = [];
   let current = "";
   let inQuotes = false;
+
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
-    if (ch === '"') { inQuotes = !inQuotes; }
-    else if (ch === "," && !inQuotes) { result.push(current.trim()); current = ""; }
-    else { current += ch; }
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === "," && !inQuotes) {
+      result.push(current);
+      current = "";
+    } else {
+      current += ch;
+    }
   }
-  result.push(current.trim());
-  return result;
+  result.push(current);
+  return result.map(s => s.trim());
 }
 
-function simpleMatch(headers, fields) {
+function knownMapping(headers, table) {
+  const known = KNOWN_MAPPINGS[table] || {};
   const mapping = {};
-  const lowerFields = fields.map(f => f.toLowerCase());
   headers.forEach(h => {
-    const lower = h.toLowerCase().replace(/[^a-z가-힣]/g, "");
-    const idx = lowerFields.findIndex(f => f === lower || lower.includes(f) || f.includes(lower));
-    mapping[h] = idx >= 0 ? fields[idx] : null;
+    const lower = h.toLowerCase().trim();
+    if (known[h]) { mapping[h] = known[h]; }
+    else if (known[lower]) { mapping[h] = known[lower]; }
+    else {
+      const match = Object.entries(known).find(([k]) =>
+        lower.includes(k.toLowerCase()) || k.toLowerCase().includes(lower)
+      );
+      mapping[h] = match ? match[1] : null;
+    }
   });
   return mapping;
+}
+
+function normalizeDate(val) {
+  if (!val) return new Date().toISOString().split("T")[0];
+  // M/D/YYYY or MM/DD/YYYY
+  const slashMatch = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) {
+    const [, m, d, y] = slashMatch;
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+  // YYYY-MM-DD already
+  if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+  // YYYY.MM.DD
+  const dotMatch = val.match(/^(\d{4})\.(\d{1,2})\.(\d{1,2})$/);
+  if (dotMatch) {
+    const [, y, m, d] = dotMatch;
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+  return val;
+}
+
+function mapCategory(val) {
+  if (!val) return "기타";
+  const lower = val.toLowerCase();
+  for (const [key, mapped] of Object.entries(CATEGORY_MAP)) {
+    if (lower.includes(key.toLowerCase()) || key.toLowerCase().includes(lower)) {
+      return mapped;
+    }
+  }
+  return "기타";
+}
+
+async function claudeMap(headers, fields, apiKey) {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 500,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: "user", content: `CSV headers: ${JSON.stringify(headers)}\nTarget fields: ${JSON.stringify(fields)}` }]
+    })
+  });
+  const data = await res.json();
+  const text = data.content?.map(b => b.text || "").join("") || "{}";
+  return JSON.parse(text.replace(/```json|```/g, "").trim());
 }
