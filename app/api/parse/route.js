@@ -1,5 +1,8 @@
 import { createClient } from "@/lib/supabase-server";
 import { NextResponse } from "next/server";
+import { rateLimit } from "@/lib/rate-limit";
+
+const limiter = rateLimit({ windowMs: 60_000, max: 5 });
 
 const CATEGORIES = [
   "SaaS/구독", "클라우드/호스팅", "도메인/DNS", "디자인도구",
@@ -26,6 +29,9 @@ export async function POST(request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { allowed } = limiter.check(user.id);
+  if (!allowed) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {

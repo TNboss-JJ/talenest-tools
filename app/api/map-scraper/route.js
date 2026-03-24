@@ -1,5 +1,8 @@
 import { createClient } from "@/lib/supabase-server";
 import { NextResponse } from "next/server";
+import { rateLimit } from "@/lib/rate-limit";
+
+const limiter = rateLimit({ windowMs: 60_000, max: 10 });
 
 const FIT_PROMPT = `You are a lead qualification agent for TaleNest, an EdTech startup building an emotional learning observation platform for children ages 3-7.
 Target customers: daycares (어린이집), kindergartens (유치원), preschools, children's education centers, after-school programs.
@@ -21,6 +24,9 @@ export async function POST(request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { allowed } = limiter.check(user.id);
+  if (!allowed) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
 
   const placesKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!placesKey) return NextResponse.json({ error: "GOOGLE_PLACES_API_KEY not configured" }, { status: 500 });
