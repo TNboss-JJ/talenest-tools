@@ -29,10 +29,12 @@ export async function middleware(request) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // 로그인 페이지와 auth callback은 통과
+  // 로그인 페이지, auth callback, 공개 페이지는 통과
   if (
     request.nextUrl.pathname.startsWith("/login") ||
-    request.nextUrl.pathname.startsWith("/auth")
+    request.nextUrl.pathname.startsWith("/auth") ||
+    request.nextUrl.pathname.startsWith("/public-feedback") ||
+    request.nextUrl.pathname.startsWith("/api/public-feedback")
   ) {
     return supabaseResponse;
   }
