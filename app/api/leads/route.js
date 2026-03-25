@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase-server";
 import { NextResponse } from "next/server";
 import { rateLimit } from "@/lib/rate-limit";
+import { slack } from "@/lib/slack";
 
 const limiter = rateLimit({ windowMs: 60_000, max: 30 });
 
@@ -46,6 +47,7 @@ export async function POST(request) {
     if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 });
 
     await supabase.from("leads").update({ status: "converted" }).eq("id", body.lead_id);
+    slack.leadConverted(contact.name, contact.company, lead.fit_score);
     return NextResponse.json({ contact, converted: true }, { status: 201 });
   }
 

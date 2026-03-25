@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase-server";
 import { NextResponse } from "next/server";
 import { rateLimit } from "@/lib/rate-limit";
+import { slack } from "@/lib/slack";
 
 const limiter = rateLimit({ windowMs: 60_000, max: 3 });
 
@@ -190,6 +191,7 @@ export async function POST(request) {
     const { data: inserted, error: dbErr } = await supabase.from(table).insert(records).select();
     if (dbErr) return NextResponse.json({ error: dbErr.message, mapping }, { status: 500 });
 
+    slack.csvImported(table, inserted.length);
     return NextResponse.json({
       inserted: inserted.length,
       total_rows: rows.length,

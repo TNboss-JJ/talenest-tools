@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase-server";
 import { NextResponse } from "next/server";
 import { rateLimit } from "@/lib/rate-limit";
+import { slack } from "@/lib/slack";
 
 const limiter = rateLimit({ windowMs: 60_000, max: 30 });
 
@@ -33,6 +34,7 @@ export async function POST(request) {
   const body = await request.json();
   const { data, error } = await supabase.from("contacts").insert({ ...body, user_id: user.id }).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  slack.newContact(data.name, data.company, data.type);
   return NextResponse.json(data, { status: 201 });
 }
 
@@ -46,6 +48,7 @@ export async function PATCH(request) {
 
   const { data, error } = await supabase.from("contacts").update(updates).eq("id", id).eq("user_id", user.id).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (updates.stage) slack.stageChange(data.name, data.company, "이전", updates.stage);
   return NextResponse.json(data);
 }
 

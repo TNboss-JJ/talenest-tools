@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase-server";
 import { NextResponse } from "next/server";
 import { rateLimit } from "@/lib/rate-limit";
+import { slack } from "@/lib/slack";
 
 const limiter = rateLimit({ windowMs: 60_000, max: 30 });
 
@@ -67,6 +68,8 @@ export async function POST(request) {
     .select();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const first = data[0];
+  slack.newExpense(first.vendor, first.amount, first.currency, first.category);
   return NextResponse.json(data, { status: 201 });
 }
 
