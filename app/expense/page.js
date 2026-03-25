@@ -2,6 +2,7 @@
 import { useState, useRef, useCallback } from "react";
 import { useExpenses } from "@/lib/use-expenses";
 import { createClient } from "@/lib/supabase-browser";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
 const CATEGORIES = [
   "SaaS/구독", "클라우드/호스팅", "도메인/DNS", "디자인도구",
@@ -39,6 +40,74 @@ export default function ExpensePage() {
   const fileRef = useRef(null);
   const textRef = useRef(null);
 
+  // ─── Derived data ────────────────────────────────────────────────────────────
+  const now = new Date();
+  const thisMonthStr = now.toISOString().slice(0, 7);
+  const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonthStr = lastMonthDate.toISOString().slice(0, 7);
+
+  const thisMonthUSD = expenses
+    .filter(e => e.date?.startsWith(thisMonthStr) && e.currency !== "KRW")
+    .reduce((s, e) => s + Number(e.amount), 0);
+  const lastMonthUSD = expenses
+    .filter(e => e.date?.startsWith(lastMonthStr) && e.currency !== "KRW")
+    .reduce((s, e) => s + Number(e.amount), 0);
+  const monthChangePct = lastMonthUSD > 0
+    ? ((thisMonthUSD - lastMonthUSD) / lastMonthUSD * 100).toFixed(1)
+    : null;
+
+  // Monthly chart data (all currencies merged as amounts)
+  const monthlyDataMap = {};
+  expenses.forEach(e => {
+    const month = (e.date || "").slice(0, 7);
+    if (!month) return;
+    monthlyDataMap[month] = (monthlyDataMap[month] || 0) + Number(e.amount);
+  });
+  const monthlyData = Object.entries(monthlyDataMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, total]) => ({ month, total: Math.round(total * 100) / 100 }));
+
+  // Category pie data
+  const catDataMap = {};
+  expenses.forEach(e => {
+    const cat = e.category || "기타";
+    catDataMap[cat] = (catDataMap[cat] || 0) + Number(e.amount);
+  });
+  const categoryData = Object.entries(catDataMap)
+    .sort(([, a], [, b]) => b - a)
+    .map(([name, value]) => ({ name, value: Math.round(value * 100) / 100 }));
+
+  // Subscription detection
+  const vendorMap = {};
+  expenses.forEach(e => {
+    if (!vendorMap[e.vendor]) vendorMap[e.vendor] = [];
+    vendorMap[e.vendor].push(e);
+  });
+  const subscriptions = Object.entries(vendorMap)
+    .filter(([, items]) => items.length >= 2)
+    .map(([vendor, items]) => {
+      const sorted = [...items].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+      const avgAmount = items.reduce((s, e) => s + Number(e.amount), 0) / items.length;
+      const lastDate = sorted[sorted.length - 1].date;
+      const currency = items[0].currency;
+      let cycle = "불명";
+      if (sorted.length >= 2) {
+        const first = new Date(sorted[0].date);
+        const last = new Date(sorted[sorted.length - 1].date);
+        const avgDays = (last - first) / (1000 * 60 * 60 * 24) / (sorted.length - 1);
+        if (avgDays <= 45) cycle = "매월";
+        else if (avgDays <= 200) cycle = "분기";
+        else cycle = "매년";
+      }
+      return { vendor, count: items.length, avgAmount, lastDate, cycle, currency };
+    })
+    .sort((a, b) => b.avgAmount - a.avgAmount);
+
+  const monthlySubTotal = subscriptions
+    .filter(s => s.cycle === "매월")
+    .reduce((sum, s) => sum + s.avgAmount, 0);
+
+  // ─── Existing logic ───────────────────────────────────────────────────────────
   const handleLogout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
@@ -132,6 +201,8 @@ export default function ExpensePage() {
 
   return (
     <div style={{ fontFamily: "'DM Sans', 'Pretendard', sans-serif", minHeight: "100vh", background: "#0F1117", color: "#E8E6E1" }}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+
       {/* Header */}
       <header style={{ padding: "16px 24px", borderBottom: "1px solid rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -141,7 +212,7 @@ export default function ExpensePage() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <nav style={{ display: "flex", gap: 3, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: 3 }}>
-            {[["table","내역"],["upload","업로드"],["manual","수동"]].map(([v, l]) => (
+            {[["table","내역"],["upload","업로드"],["manual","수동"],["chart","차트"],["subscriptions","구독"]].map(([v, l]) => (
               <button key={v} onClick={() => setView(v)} style={{
                 padding: "6px 12px", borderRadius: 6, border: "none", cursor: "pointer",
                 fontSize: 11, fontWeight: 500, fontFamily: "inherit",
@@ -156,18 +227,32 @@ export default function ExpensePage() {
 
       <main style={{ padding: "16px 24px", maxWidth: 1100, margin: "0 auto" }}>
         {/* Stats */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 18 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 18 }}>
           {[
             ["총 건수", `${expenses.length}건`, "#E8E6E1"],
             ["USD", `$${totalUSD.toLocaleString("en", { minimumFractionDigits: 2 })}`, "#6DCDB8"],
             ["KRW", `₩${totalKRW.toLocaleString("ko")}`, "#5B9BD5"],
-            ["공제 가능", `${expenses.filter(e => e.tax_deductible).length}건`, "#E8A87C"]
+            ["공제 가능", `${expenses.filter(e => e.tax_deductible).length}건`, "#E8A87C"],
           ].map(([l, v, c]) => (
             <div key={l} style={{ background: "rgba(255,255,255,0.02)", borderRadius: 10, padding: "14px 16px", border: "1px solid rgba(255,255,255,0.04)" }}>
               <div style={{ fontSize: 9, color: "#444", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>{l}</div>
               <div style={{ fontSize: 20, fontWeight: 700, color: c, fontVariantNumeric: "tabular-nums" }}>{v}</div>
             </div>
           ))}
+          {/* This month */}
+          <div style={{ background: "rgba(255,255,255,0.02)", borderRadius: 10, padding: "14px 16px", border: "1px solid rgba(255,255,255,0.04)" }}>
+            <div style={{ fontSize: 9, color: "#444", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>이번 달</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: "#E8E6E1", fontVariantNumeric: "tabular-nums" }}>
+              ${thisMonthUSD.toLocaleString("en", { minimumFractionDigits: 2 })}
+            </div>
+          </div>
+          {/* vs last month */}
+          <div style={{ background: "rgba(255,255,255,0.02)", borderRadius: 10, padding: "14px 16px", border: "1px solid rgba(255,255,255,0.04)" }}>
+            <div style={{ fontSize: 9, color: "#444", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>지난달 대비</div>
+            <div style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: monthChangePct === null ? "#555" : Number(monthChangePct) > 0 ? "#E24B4A" : "#6DCDB8" }}>
+              {monthChangePct === null ? "—" : `${Number(monthChangePct) > 0 ? "+" : ""}${monthChangePct}%`}
+            </div>
+          </div>
         </div>
 
         {/* Upload View */}
@@ -297,6 +382,121 @@ export default function ExpensePage() {
           </div>
         )}
 
+        {/* Chart View */}
+        {view === "chart" && (
+          <div>
+            {expenses.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 48, color: "#444" }}>
+                <div style={{ fontSize: 36, marginBottom: 8 }}>📊</div>
+                <div style={{ fontSize: 13 }}>내역을 먼저 추가해주세요</div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+                {/* Monthly Bar Chart */}
+                <div style={{ background: "rgba(255,255,255,0.02)", borderRadius: 12, padding: 20, border: "1px solid rgba(255,255,255,0.04)" }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>월별 지출</div>
+                  <div style={{ fontSize: 10, color: "#555", marginBottom: 16 }}>혼합 통화 기준 합산</div>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={monthlyData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+                      <XAxis dataKey="month" tick={{ fill: "#888", fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill: "#888", fontSize: 11 }} axisLine={false} tickLine={false} width={50} />
+                      <Tooltip
+                        contentStyle={{ background: "#1A1D26", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, fontSize: 12 }}
+                        labelStyle={{ color: "#E8E6E1" }}
+                        itemStyle={{ color: "#6DCDB8" }}
+                        formatter={(v) => [v.toLocaleString(), "금액"]}
+                      />
+                      <Bar dataKey="total" fill="#3B7A6D" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Category Pie Chart */}
+                <div style={{ background: "rgba(255,255,255,0.02)", borderRadius: 12, padding: 20, border: "1px solid rgba(255,255,255,0.04)" }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 16 }}>카테고리별 지출</div>
+                  <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "center" }}>
+                    <ResponsiveContainer width={220} height={220}>
+                      <PieChart>
+                        <Pie data={categoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} innerRadius={50}>
+                          {categoryData.map((entry, i) => (
+                            <Cell key={i} fill={CAT_COLORS[entry.name] || "#888"} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{ background: "#1A1D26", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, fontSize: 12 }}
+                          itemStyle={{ color: "#E8E6E1" }}
+                          formatter={(v) => [v.toLocaleString(), "금액"]}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {categoryData.map((entry, i) => (
+                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ width: 10, height: 10, borderRadius: 2, background: CAT_COLORS[entry.name] || "#888", flexShrink: 0 }} />
+                          <span style={{ fontSize: 11, color: "#999", minWidth: 100 }}>{entry.name}</span>
+                          <span style={{ fontSize: 11, color: "#E8E6E1", fontVariantNumeric: "tabular-nums" }}>{entry.value.toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Subscriptions View */}
+        {view === "subscriptions" && (
+          <div>
+            {/* Summary */}
+            <div style={{ background: "rgba(59,122,109,0.08)", borderRadius: 12, padding: "14px 18px", border: "1px solid rgba(59,122,109,0.15)", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <div style={{ fontSize: 10, color: "#6DCDB8", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 2 }}>이번 달 예상 구독 비용</div>
+                <div style={{ fontSize: 22, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+                  ${monthlySubTotal.toLocaleString("en", { minimumFractionDigits: 2 })}
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 10, color: "#555", marginBottom: 2 }}>감지된 구독</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "#6DCDB8" }}>{subscriptions.length}개</div>
+              </div>
+            </div>
+
+            {subscriptions.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 48, color: "#444" }}>
+                <div style={{ fontSize: 36, marginBottom: 8 }}>🔍</div>
+                <div style={{ fontSize: 13 }}>같은 업체에서 2회 이상 결제 내역이 있으면 여기에 표시됩니다</div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {subscriptions.map((s, i) => (
+                  <div key={i} style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 10, padding: "12px 16px", display: "flex", alignItems: "center", gap: 14 }}>
+                    <div style={{ width: 38, height: 38, borderRadius: 8, background: "rgba(59,122,109,0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>
+                      {s.cycle === "매월" ? "🔄" : s.cycle === "매년" ? "📅" : "🔃"}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{s.vendor}</div>
+                      <div style={{ fontSize: 11, color: "#666", marginTop: 2 }}>
+                        마지막 결제: {s.lastDate} · 총 {s.count}회
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+                        {s.currency === "KRW" ? "₩" : "$"}{s.avgAmount.toLocaleString(s.currency === "KRW" ? "ko" : "en", { minimumFractionDigits: s.currency === "KRW" ? 0 : 2 })}
+                      </div>
+                      <div style={{ marginTop: 4 }}>
+                        <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: s.cycle === "매월" ? "rgba(109,205,184,0.15)" : "rgba(91,155,213,0.15)", color: s.cycle === "매월" ? "#6DCDB8" : "#5B9BD5", fontWeight: 500 }}>
+                          {s.cycle}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {(error || fetchError) && (
           <div style={{ marginTop: 12, padding: 12, background: "rgba(220,80,80,0.06)", border: "1px solid rgba(220,80,80,0.12)", borderRadius: 8, fontSize: 11, color: "#E88" }}>
             {error || fetchError}
@@ -309,7 +509,6 @@ export default function ExpensePage() {
           <div style={{ width: 32, height: 32, border: "3px solid rgba(59,122,109,0.2)", borderTop: "3px solid #3B7A6D", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
           <div style={{ fontSize: 13, fontWeight: 500 }}>{processingMsg}</div>
           <div style={{ fontSize: 11, color: "#555" }}>Claude가 분석 중 → Supabase에 저장됩니다</div>
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
       )}
     </div>
