@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p C:/Users/chlwo/expense-bot/app/content)",
+      "Bash(mkdir -p C:/Users/chlwo/expense-bot/app/api/assets)"
+    ]
+  }
+}
