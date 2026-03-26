@@ -90,7 +90,7 @@ export default function MonitorPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F9F7F3] p-6">
+    <div style={{ fontFamily: "'DM Sans', 'Pretendard', sans-serif", minHeight: "100vh", background: "#0F1117", color: "#E8E6E1" }}>
       <div className="max-w-4xl mx-auto space-y-6">
 
         {/* 헤더 */}
