@@ -359,16 +359,20 @@ export default function MapScraperPage() {
               <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>분석 결과</div>
               {analyzed.sort((a, b) => (b.fit_score || 0) - (a.fit_score || 0)).map((a, i) => (
                 <div key={i} style={{ ...S.card(false), display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: 8, background: a.fit_score >= 70 ? "rgba(59,122,109,0.15)" : a.fit_score >= 40 ? "rgba(232,168,124,0.15)" : "rgba(255,255,255,0.04)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: a.fit_score >= 70 ? "#6DCDB8" : a.fit_score >= 40 ? "#E8A87C" : "#666", flexShrink: 0 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 8, background: a.fit_score >= 7 ? "rgba(59,122,109,0.15)" : a.fit_score >= 4 ? "rgba(232,168,124,0.15)" : "rgba(255,255,255,0.04)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: a.fit_score >= 7 ? "#6DCDB8" : a.fit_score >= 4 ? "#E8A87C" : "#666", flexShrink: 0 }}>
                     {a.fit_score}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600 }}>{a.name}</div>
                     <div style={{ fontSize: 11, color: "#777" }}>{a.address}</div>
                     {a.fit_reason && <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{a.fit_reason}</div>}
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 3 }}>
+                      {a.phone && <a href={`tel:${a.phone}`} onClick={e => e.stopPropagation()} style={{ fontSize: 10, color: "#6DCDB8", textDecoration: "none" }}>📞 {a.phone}</a>}
+                      {a.website && <a href={a.website} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: 10, color: "#5B9BD5", textDecoration: "none" }}>🌐 웹사이트</a>}
+                      {a.email && <a href={`mailto:${a.email}`} onClick={e => e.stopPropagation()} style={{ fontSize: 10, color: "#9B8EC5", textDecoration: "none" }}>✉️ {a.email}</a>}
+                    </div>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
-                    {a.phone && <span style={{ fontSize: 10, color: "#888" }}>{a.phone}</span>}
                     <span style={S.tag(PRIORITY_COLORS[a.contact_priority] || "#888")}>{a.contact_priority}</span>
                   </div>
                 </div>
