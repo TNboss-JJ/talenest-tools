@@ -25,6 +25,8 @@ export default function MapScraperPage() {
   const [step, setStep] = useState("search");
   const [savedCount, setSavedCount] = useState(0);
   const [selected, setSelected] = useState(new Set());
+  const [groupTag, setGroupTag] = useState("");
+  const [importing, setImporting] = useState(false);
 
   const searchPlaces = useCallback(async (pageToken) => {
     setLoading(true);
@@ -111,10 +113,37 @@ export default function MapScraperPage() {
     else setSelected(new Set(results.map((_, i) => i)));
   };
 
+  const importToCRM = useCallback(async () => {
+    const places = results.filter((_, i) => selected.has(i));
+    if (!places.length) return;
+    setImporting(true);
+    setError(null);
+    try {
+      const contacts = places.map(r => ({
+        name: r.name,
+        company: groupTag.trim() || `${location} ${query}`,
+        type: "lead",
+        phone: detailed[r.place_id]?.phone || r.phone || "",
+        website: detailed[r.place_id]?.website || r.website || "",
+        notes: `Map Scraper 가져오기 | ${r.address || ""} | rating: ${r.rating || "-"}`,
+        stage: "발굴",
+      }));
+      for (const c of contacts) {
+        await fetch("/api/contacts", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(c),
+        });
+      }
+      alert(`✅ ${contacts.length}개 연락처가 CRM에 저장되었습니다!`);
+    } catch (e) { setError(e.message); }
+    setImporting(false);
+  }, [results, selected, detailed, groupTag, location, query]);
+
   const reset = () => {
     setResults([]); setDetailed({}); setAnalyzed([]);
     setSelected(new Set()); setStep("search");
     setSavedCount(0); setNextPage(null); setError(null);
+    setGroupTag("");
   };
 
   const S = {
@@ -175,23 +204,49 @@ export default function MapScraperPage() {
         {step === "results" && (
           <div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
-              <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ fontSize: 14, fontWeight: 600 }}>{results.length}개 기관 발견</span>
-                <span style={{ fontSize: 12, color: "#666", marginLeft: 8 }}>{query} · {location}</span>
+                <span style={{ fontSize: 12, color: "#666" }}>{query} · {location}</span>
+                {selected.size > 0 && (
+                  <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 20, background: "rgba(59,122,109,0.2)", color: "#6DCDB8", fontWeight: 600 }}>
+                    {selected.size}개 선택됨
+                  </span>
+                )}
               </div>
-              <div style={{ display: "flex", gap: 6 }}>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 <button onClick={selectAll} style={S.btn(false)}>
-                  {selected.size === results.length ? "선택 해제" : "전체 선택"}
+                  {selected.size === results.length ? "전체 해제" : "전체 선택"}
                 </button>
                 <button onClick={fetchDetails} style={S.btn(false)}>
                   상세 정보 수집 ({selected.size || results.length}개)
                 </button>
                 <button onClick={analyzeAndSave} style={S.btn(true)}>
-                  AI 분석 + CRM 저장
+                  AI 분석 + 리드 저장
                 </button>
                 <button onClick={reset} style={S.btn(false)}>새 검색</button>
               </div>
             </div>
+
+            {/* Group Tag + Bulk CRM Import */}
+            {selected.size > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, padding: "10px 14px", background: "rgba(59,122,109,0.06)", border: "1px solid rgba(59,122,109,0.15)", borderRadius: 10 }}>
+                <span style={{ fontSize: 11, color: "#6DCDB8", fontWeight: 600, flexShrink: 0 }}>CRM 가져오기</span>
+                <input
+                  value={groupTag}
+                  onChange={e => setGroupTag(e.target.value)}
+                  placeholder={`그룹명 (예: ${location} ${query})`}
+                  style={{ ...S.input, maxWidth: 220, fontSize: 12, padding: "7px 10px" }}
+                  onClick={e => e.stopPropagation()}
+                />
+                <button
+                  onClick={importToCRM}
+                  disabled={importing}
+                  style={{ ...S.btn(true), fontSize: 12, padding: "8px 16px", flexShrink: 0, opacity: importing ? 0.5 : 1 }}
+                >
+                  {importing ? "가져오는 중..." : `선택한 ${selected.size}개 → CRM 가져오기`}
+                </button>
+              </div>
+            )}
 
             {results.map((r, i) => {
               const d = detailed[r.place_id];
