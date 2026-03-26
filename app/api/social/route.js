@@ -6,11 +6,9 @@ import { createClient } from "@/lib/supabase-server";
 import { NextResponse } from "next/server";
 import { rateLimit } from "@/lib/rate-limit";
 import { slack } from "@/lib/slack";
-import Anthropic from "@anthropic-ai/sdk";
 
 const limiter = rateLimit({ windowMs: 60_000, max: 20 });
 const aiLimiter = rateLimit({ windowMs: 60_000, max: 5 });
-const anthropic = new Anthropic();
 
 // ─── GET: 소셜 포스트 조회 ────────────────────────────────────
 export async function GET(request) {
@@ -82,13 +80,21 @@ JSON 형식으로만 응답하세요 (마크다운 없이):
 }`;
 
     try {
-      const message = await anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1024,
-        messages: [{ role: "user", content: prompt }],
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": process.env.ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1024,
+          messages: [{ role: "user", content: prompt }],
+        }),
       });
-
-      const raw = message.content[0].text.replace(/```json|```/g, "").trim();
+      const aiData = await response.json();
+      const raw = aiData.content[0].text.replace(/```json|```/g, "").trim();
       const parsed = JSON.parse(raw);
 
       return NextResponse.json({ draft: parsed, ai_generated: true });
