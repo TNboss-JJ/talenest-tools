@@ -2,7 +2,15 @@
   "permissions": {
     "allow": [
       "Bash(mkdir -p C:/Users/chlwo/expense-bot/app/content)",
-      "Bash(mkdir -p C:/Users/chlwo/expense-bot/app/api/assets)"
+      "Bash(mkdir -p C:/Users/chlwo/expense-bot/app/api/assets)",
+      "Bash(powershell -Command \"Expand-Archive -Path ''C:\\\\Users\\\\chlwo\\\\Downloads\\\\talenest-tools-phase2.zip'' -DestinationPath ''C:\\\\Users\\\\chlwo\\\\Downloads\\\\talenest-tools-phase2'' -Force\")",
+      "Bash(cp C:/Users/chlwo/Downloads/talenest-tools-phase2/fixes/lib/slack.js ./lib/slack.js)",
+      "Bash(cp C:/Users/chlwo/Downloads/talenest-tools-phase2/fixes/lib/rate-limit.js ./lib/rate-limit.js)",
+      "Bash(SRC=\"C:/Users/chlwo/Downloads/talenest-tools-phase2\")",
+      "Bash(cp \"$SRC/phase2/app/monitor/page.js\" ./app/monitor/page.js)",
+      "Bash(cp \"$SRC/phase2/app/legal/page.js\" ./app/legal/page.js)",
+      "Bash(cp \"$SRC/phase2/app/social/page.js\" ./app/social/page.js)",
+      "Bash(cp \"$SRC/phase2/app/api/monitor/route.js\" ./app/api/monitor/route.js)"
     ]
   }
 }

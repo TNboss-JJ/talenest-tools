@@ -37,19 +37,19 @@ const TOOLS = [
   },
   {
     id: "legal", icon: "⚖️", name: "Legal Tracker", path: "/legal",
-    desc: "상표 등록 현황, 계약서 관리, 법무 일정",
-    status: "planned", priority: "P2",
-    tech: "Supabase + PDF 저장소",
-    features: ["상표 출원/등록 타임라인", "계약서 보관 + 만료 알림", "법무 비용 추적", "NDA 템플릿", "국가별 IP 현황", "갱신 리마인더"],
-    phase: 3
+    desc: "상표권, 계약, 법무 기한 관리 및 알림",
+    status: "live", priority: "P1",
+    tech: "Next.js + Supabase + Slack",
+    features: ["상표/계약/출원 관리", "D-Day 마감 추적", "Google Drive 연동", "Slack 기한 알림"],
+    phase: 2
   },
   {
     id: "social", icon: "📱", name: "Social Scheduler", path: "/social",
-    desc: "SNS 콘텐츠 캘린더, 예약 게시, 성과 추적",
-    status: "planned", priority: "P2",
-    tech: "Buffer/Later API 또는 자체 구축",
-    features: ["콘텐츠 캘린더", "멀티 플랫폼 예약", "해시태그 관리", "성과 분석", "A/B 테스트", "AI 캡션 생성"],
-    phase: 3
+    desc: "AI 소셜 콘텐츠 초안 생성 + 발행 스케줄 관리",
+    status: "live", priority: "P2",
+    tech: "Next.js + Supabase + Claude AI",
+    features: ["Claude AI 초안 생성", "4개 플랫폼 지원", "TaleNest 감정 태깅", "발행 스케줄러"],
+    phase: 2
   },
   {
     id: "feedback", icon: "💬", name: "Feedback Hub", path: "/feedback",
@@ -60,12 +60,12 @@ const TOOLS = [
     phase: 2
   },
   {
-    id: "monitor", icon: "📡", name: "Site Monitor", path: "/monitor",
-    desc: "사이트 업타임, 성능 모니터링, 알림",
-    status: "planned", priority: "P2",
-    tech: "Vercel Analytics + Cron",
-    features: ["업타임 체크 (5분 간격)", "응답 시간 그래프", "SSL 인증서 만료 알림", "다운 알림 (Slack/Email)", "도메인별 상태", "월간 가용성 리포트"],
-    phase: 3
+    id: "monitor", icon: "🔍", name: "Site Monitor", path: "/monitor",
+    desc: "TaleNest 도메인 업타임 실시간 모니터링",
+    status: "live", priority: "P1",
+    tech: "Next.js + Supabase + Slack",
+    features: ["업타임 체크", "응답시간 측정", "다운 감지 Slack 알림", "24시간 로그"],
+    phase: 2
   },
   {
     id: "map-scraper", icon: "🗺️", name: "Map Scraper", path: "/map-scraper",
