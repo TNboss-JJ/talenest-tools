@@ -207,7 +207,6 @@ export async function POST(request) {
       }
 
       // Generate outreach drafts for auto-saved contacts (max 5)
-      const apiKey = process.env.ANTHROPIC_API_KEY;
       for (const c of savedContacts.slice(0, 5)) {
         try {
           let subject = `TaleNest 파일럿 제안 — ${c.company}`;
