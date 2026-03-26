@@ -9,14 +9,14 @@ const FIT_PROMPT = `You are a lead qualification agent for TaleNest, an EdTech s
 Target customers: daycares (어린이집), kindergartens (유치원), preschools, children's education centers, after-school programs.
 
 Given a list of institutions from Google Maps, score each one:
-- fit_score: 0-100 (how likely they are a TaleNest customer)
+- fit_score: 1-10 (how likely they are a TaleNest customer)
 - fit_reason: 1 sentence why (Korean)
 - contact_priority: "high" | "medium" | "low"
 
 Scoring guide:
-- 80-100: Direct match (어린이집, 유치원, 아동교육)
-- 50-79: Related (학원, 교육센터, 문화센터 with children programs)
-- 0-49: Weak match (일반 학원, unrelated)
+- 8-10: Direct match (어린이집, 유치원, 아동교육)
+- 5-7: Related (학원, 교육센터, 문화센터 with children programs)
+- 1-4: Weak match (일반 학원, unrelated)
 
 Respond ONLY with a JSON array matching the input order. No markdown.`;
 
@@ -124,8 +124,31 @@ export async function POST(request) {
     if (action === "analyze") {
       if (!places?.length) return NextResponse.json({ error: "places required" }, { status: 400 });
 
+      // Enrich places with Place Details (phone, website) if missing
+      for (let i = 0; i < places.length; i++) {
+        const p = places[i];
+        if (!p.phone && p.place_id) {
+          try {
+            const dParams = new URLSearchParams({
+              place_id: p.place_id,
+              key: placesKey,
+              fields: "name,formatted_phone_number,international_phone_number,website,formatted_address,rating,user_ratings_total",
+            });
+            const dRes = await fetch(`https://maps.googleapis.com/maps/api/place/details/json?${dParams}`);
+            const dData = await dRes.json();
+            if (dData.result) {
+              places[i] = {
+                ...p,
+                phone: dData.result.formatted_phone_number || dData.result.international_phone_number || null,
+                website: dData.result.website || p.website || null,
+              };
+            }
+          } catch (e) { /* skip detail fetch error */ }
+        }
+      }
+
       const apiKey = process.env.ANTHROPIC_API_KEY;
-      let analyzed = places.map(p => ({ ...p, fit_score: 50, fit_reason: "분석 대기중", contact_priority: "medium" }));
+      let analyzed = places.map(p => ({ ...p, fit_score: 5, fit_reason: "분석 대기중", contact_priority: "medium" }));
 
       if (apiKey) {
         try {
@@ -151,7 +174,7 @@ export async function POST(request) {
           if (Array.isArray(scores)) {
             analyzed = places.map((p, i) => ({
               ...p,
-              fit_score: scores[i]?.fit_score || 50,
+              fit_score: scores[i]?.fit_score || 5,
               fit_reason: scores[i]?.fit_reason || "",
               contact_priority: scores[i]?.contact_priority || "medium"
             }));
@@ -180,26 +203,52 @@ export async function POST(request) {
       const { data: saved, error: dbErr } = await supabase.from("leads").insert(records).select();
       if (dbErr) return NextResponse.json({ error: dbErr.message, analyzed }, { status: 500 });
 
-      // Auto-save high-score leads (fit_score >= 70) to contacts
-      const highScore = analyzed.filter(a => a.fit_score >= 70);
+      // Auto-save high-score leads (fit_score >= 4, 1-10 scale) to contacts
+      const highScore = analyzed.filter(a => a.fit_score >= 4);
       let autoSavedCount = 0;
       let draftsCount = 0;
       const savedContacts = [];
 
       for (const hs of highScore) {
-        const { data: contact, error: cErr } = await supabase
-          .from("contacts")
-          .insert({
-            name: hs.name,
-            company: hs.name,
-            type: "lead",
-            stage: "identified",
-            score: hs.fit_score,
-            notes: `${hs.fit_reason} | ${hs.address || ""} | ${hs.phone || ""}`,
-            user_id: user.id,
-          })
-          .select()
-          .single();
+        // Try to extract email from website
+        let extractedEmail = null;
+        if (hs.website) {
+          try {
+            const siteRes = await fetch(hs.website, { signal: AbortSignal.timeout(5000) });
+            const html = await siteRes.text();
+            const emailMatch = html.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
+            if (emailMatch) extractedEmail = emailMatch[0];
+          } catch (e) { /* website fetch failed, continue */ }
+        }
+
+        const contactData = {
+          name: hs.name,
+          company: hs.name,
+          type: "lead",
+          stage: "identified",
+          score: hs.fit_score,
+          phone: hs.phone || null,
+          website: hs.website || null,
+          email: extractedEmail,
+          notes: `${hs.fit_reason} | ${hs.address || ""}${hs.phone ? ` | 전화: ${hs.phone}` : ""}${hs.website ? ` | 웹: ${hs.website}` : ""}${extractedEmail ? ` | 이메일: ${extractedEmail}` : ""}`,
+          user_id: user.id,
+        };
+
+        // Try inserting with phone/website/email columns; if columns don't exist, fallback to notes only
+        let contact = null;
+        let cErr = null;
+        const result = await supabase.from("contacts").insert(contactData).select().single();
+        contact = result.data;
+        cErr = result.error;
+
+        if (cErr && (cErr.message?.includes("phone") || cErr.message?.includes("website"))) {
+          // Fallback: columns don't exist, use notes only
+          const { phone: _p, website: _w, email: _e, ...fallback } = contactData;
+          const fb = await supabase.from("contacts").insert(fallback).select().single();
+          contact = fb.data;
+          cErr = fb.error;
+        }
+
         if (!cErr && contact) {
           autoSavedCount++;
           savedContacts.push(contact);
