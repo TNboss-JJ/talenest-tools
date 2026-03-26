@@ -113,8 +113,8 @@ export default function MapScraperPage() {
       setStep("done");
       fetchHistory();
       if (data.auto_saved > 0 || data.drafts_created > 0) {
-        setToast(`70점 이상 ${data.auto_saved}건 자동 CRM 저장 + 메일 초안 ${data.drafts_created}건 생성`);
-        setTimeout(() => setToast(null), 6000);
+        setToast(`${data.auto_saved}건 자동 CRM 저장 | 메일 초안 ${data.drafts_created}건 생성`);
+        setTimeout(() => setToast(null), 3000);
       }
     } catch (e) { setError(e.message); }
     setLoading(false);
@@ -304,12 +304,23 @@ export default function MapScraperPage() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 600 }}>{r.name}</div>
                       <div style={{ fontSize: 11, color: "#777" }}>{r.address}</div>
-                      {(d?.phone || d?.website) && (
-                        <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>
-                          {d.phone && <span style={{ marginRight: 10 }}>{d.phone}</span>}
-                          {d.website && <a href={d.website} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color: "#5B9BD5", textDecoration: "none" }}>웹사이트 ↗</a>}
-                        </div>
-                      )}
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 3 }}>
+                        {(r.phone || r.formatted_phone_number || d?.phone) && (
+                          <a href={`tel:${r.phone || r.formatted_phone_number || d?.phone}`} onClick={e => e.stopPropagation()} style={{ fontSize: 11, color: "#6DCDB8", textDecoration: "none" }}>
+                            📞 {r.phone || r.formatted_phone_number || d?.phone}
+                          </a>
+                        )}
+                        {(r.website || d?.website) && (
+                          <a href={r.website || d?.website} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: 11, color: "#5B9BD5", textDecoration: "none" }}>
+                            🌐 웹사이트
+                          </a>
+                        )}
+                        {r.email && (
+                          <a href={`mailto:${r.email}`} onClick={e => e.stopPropagation()} style={{ fontSize: 11, color: "#9B8EC5", textDecoration: "none" }}>
+                            ✉️ {r.email}
+                          </a>
+                        )}
+                      </div>
                     </div>
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
                       {r.rating && (
