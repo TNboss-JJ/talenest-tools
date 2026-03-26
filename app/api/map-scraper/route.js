@@ -35,6 +35,17 @@ export async function POST(request) {
   try {
     const { action, query, location, radius, pageToken, places } = await request.json();
 
+    // Action 0: Get scrape history
+    if (action === "history") {
+      const { data: hist } = await supabase
+        .from("scrape_history")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(20);
+      return NextResponse.json({ history: hist || [] });
+    }
+
     // Action 1: Search places
     if (action === "search") {
       if (!query) return NextResponse.json({ error: "query required" }, { status: 400 });
@@ -169,8 +180,90 @@ export async function POST(request) {
       const { data: saved, error: dbErr } = await supabase.from("leads").insert(records).select();
       if (dbErr) return NextResponse.json({ error: dbErr.message, analyzed }, { status: 500 });
 
+      // Auto-save high-score leads (fit_score >= 70) to contacts
+      const highScore = analyzed.filter(a => a.fit_score >= 70);
+      let autoSavedCount = 0;
+      let draftsCount = 0;
+      const savedContacts = [];
+
+      for (const hs of highScore) {
+        const { data: contact, error: cErr } = await supabase
+          .from("contacts")
+          .insert({
+            name: hs.name,
+            company: hs.name,
+            type: "lead",
+            stage: "identified",
+            score: hs.fit_score,
+            notes: `${hs.fit_reason} | ${hs.address || ""} | ${hs.phone || ""}`,
+            user_id: user.id,
+          })
+          .select()
+          .single();
+        if (!cErr && contact) {
+          autoSavedCount++;
+          savedContacts.push(contact);
+        }
+      }
+
+      // Generate outreach drafts for auto-saved contacts (max 5)
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      for (const c of savedContacts.slice(0, 5)) {
+        try {
+          let subject = `TaleNest 파일럿 제안 — ${c.company}`;
+          let body = `안녕하세요, ${c.company} 관계자님.\n\nTaleNest 감정 학습 파일럿을 제안드립니다.`;
+
+          if (apiKey) {
+            const draftRes = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+              body: JSON.stringify({
+                model: "claude-sonnet-4-20250514",
+                max_tokens: 1024,
+                messages: [{
+                  role: "user",
+                  content: `당신은 TaleNest® 에듀테크 스타트업 CEO입니다.
+TaleNest는 아이의 감정 학습 과정을 데이터로 기록하는 Observation Platform입니다.
+${c.company}에 보낼 첫 컨택 메일을 작성해주세요.
+기관 특징: ${c.notes || "정보 없음"}
+조건: 짧고 따뜻하게, 부담없이, 파일럿 제안 포함, 한국어
+JSON으로만 응답: { "subject": "메일 제목", "body": "메일 본문" }`
+                }],
+              }),
+            });
+            const aiData = await draftRes.json();
+            const raw = aiData.content?.[0]?.text?.replace(/```json|```/g, "").trim();
+            const parsed = JSON.parse(raw);
+            subject = parsed.subject || subject;
+            body = parsed.body || body;
+          }
+
+          const { error: dErr } = await supabase
+            .from("outreach_drafts")
+            .insert({ contact_id: c.id, name: c.name, company: c.company, subject, body, status: "draft", user_id: user.id });
+          if (!dErr) draftsCount++;
+        } catch (e) {
+          // Draft generation failed for this contact, continue
+        }
+      }
+
+      // Save scrape history
+      await supabase.from("scrape_history").insert({
+        query: query || "",
+        location: location || "",
+        total_found: analyzed.length,
+        auto_saved: autoSavedCount,
+        user_id: user.id,
+      });
+
       slack.newLeads(saved?.length || 0, query, location);
-      return NextResponse.json({ analyzed, saved: saved?.length || 0 });
+
+      return NextResponse.json({
+        analyzed,
+        saved: saved?.length || 0,
+        auto_saved: autoSavedCount,
+        drafts_created: draftsCount,
+      });
     }
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });

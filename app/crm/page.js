@@ -31,6 +31,9 @@ export default function CRMPage() {
   const [savingMeeting, setSavingMeeting] = useState(false);
   const [meetingForm, setMeetingForm] = useState({ date: "", type: "video", summary: "", action_items: "" });
   const scrapeRef = useRef(null);
+  const [drafts, setDrafts] = useState([]);
+  const [showDrafts, setShowDrafts] = useState(false);
+  const [dragId, setDragId] = useState(null);
 
   const [form, setForm] = useState({
     name: "", email: "", company: "", title: "",
@@ -52,9 +55,14 @@ export default function CRMPage() {
     if (res.ok) setMeetings(await res.json());
   }, []);
 
+  const fetchDrafts = useCallback(async () => {
+    const res = await fetch("/api/outreach-draft?status=draft");
+    if (res.ok) setDrafts(await res.json());
+  }, []);
+
   useEffect(() => {
-    Promise.all([fetchContacts(), fetchLeads()]).then(() => setLoading(false));
-  }, [fetchContacts, fetchLeads]);
+    Promise.all([fetchContacts(), fetchLeads(), fetchDrafts()]).then(() => setLoading(false));
+  }, [fetchContacts, fetchLeads, fetchDrafts]);
 
   useEffect(() => {
     if (selected) fetchMeetings(selected);
@@ -183,6 +191,21 @@ export default function CRMPage() {
     }
   };
 
+  const updateDraftStatus = async (id, status) => {
+    await fetch("/api/outreach-draft", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, status })
+    });
+    setDrafts(prev => prev.filter(d => d.id !== id));
+  };
+
+  const handleDrop = (stageId) => {
+    if (dragId) {
+      updateStage(dragId, stageId);
+      setDragId(null);
+    }
+  };
+
   const dismissLead = async (id) => {
     await fetch("/api/leads", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
@@ -225,6 +248,11 @@ export default function CRMPage() {
           <div style={{ width: 30, height: 30, borderRadius: 8, background: "linear-gradient(135deg, #534AB7, #3C3489)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#F7F2EA" }}>C</div>
           <span style={{ fontSize: 16, fontWeight: 700 }}>Investor CRM</span>
           <span style={{ fontSize: 9, padding: "2px 7px", borderRadius: 20, background: "rgba(83,74,183,0.2)", color: "#9B8EC5", fontWeight: 600 }}>AI AGENT</span>
+          {drafts.length > 0 && (
+            <button onClick={() => setShowDrafts(!showDrafts)} style={{ padding: "4px 10px", borderRadius: 20, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "inherit", background: "rgba(232,168,124,0.15)", color: "#E8A87C" }}>
+              📬 메일 초안 대기중 {drafts.length}건
+            </button>
+          )}
         </div>
         <nav style={{ display: "flex", gap: 3, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: 3 }}>
           {[["pipeline","파이프라인"],["contacts","연락처"],["leads","리드 스크래퍼"],["scrape","AI 스크래핑"]].map(([v,l]) => (
@@ -273,17 +301,26 @@ export default function CRMPage() {
               {STAGES.filter(s => s.id !== "passed").map(stage => {
                 const stageContacts = contacts.filter(c => c.stage === stage.id);
                 return (
-                  <div key={stage.id} style={{ minWidth: 160, flex: 1, background: "rgba(255,255,255,0.015)", borderRadius: 10, padding: 10, border: "1px solid rgba(255,255,255,0.03)" }}>
+                  <div key={stage.id}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={() => handleDrop(stage.id)}
+                    style={{ minWidth: 160, flex: 1, background: "rgba(255,255,255,0.015)", borderRadius: 10, padding: 10, border: "1px solid rgba(255,255,255,0.03)" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                       <span style={S.tag(stage.color)}>{stage.label}</span>
                       <span style={{ fontSize: 11, color: "#555" }}>{stageContacts.length}</span>
                     </div>
                     {stageContacts.map(c => (
-                      <div key={c.id} onClick={() => setSelected(c.id)} style={{ ...S.card, borderLeft: `3px solid ${stage.color}` }}>
+                      <div key={c.id}
+                        draggable
+                        onDragStart={() => setDragId(c.id)}
+                        onDragEnd={() => setDragId(null)}
+                        onClick={() => setSelected(c.id)}
+                        style={{ ...S.card, borderLeft: `3px solid ${stage.color}`, opacity: dragId === c.id ? 0.5 : 1, cursor: "grab" }}>
                         <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 2 }}>{c.name}</div>
                         <div style={{ fontSize: 10, color: "#777" }}>{c.company}{c.title ? ` · ${c.title}` : ""}</div>
                         {c.score > 0 && <div style={{ fontSize: 10, color: stage.color, marginTop: 4 }}>fit: {c.score}%</div>}
-                        {isOverdue(c) && <div style={{ fontSize: 9, color: "#E24B4A", marginTop: 4, fontWeight: 600 }}>⚠️ 팔로업</div>}
+                        {c.next_followup_at && <div style={{ fontSize: 9, color: "#888", marginTop: 2 }}>📅 {new Date(c.next_followup_at).toLocaleDateString("ko-KR")}</div>}
+                        {isOverdue(c) && <div style={{ fontSize: 9, color: "#E24B4A", marginTop: 2, fontWeight: 600 }}>⚠️ 팔로업</div>}
                       </div>
                     ))}
                   </div>
@@ -542,6 +579,35 @@ export default function CRMPage() {
 
         {error && (
           <div style={{ marginTop: 12, padding: 12, background: "rgba(220,80,80,0.06)", border: "1px solid rgba(220,80,80,0.12)", borderRadius: 8, fontSize: 11, color: "#E88" }}>{error}</div>
+        )}
+
+        {/* Outreach Drafts Panel */}
+        {showDrafts && (
+          <div style={{ position: "fixed", right: 0, top: 0, bottom: 0, width: 420, background: "#13151D", borderLeft: "1px solid rgba(255,255,255,0.06)", padding: 24, overflowY: "auto", zIndex: 150 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>📬 메일 초안</div>
+              <button onClick={() => setShowDrafts(false)} style={{ background: "none", border: "none", color: "#555", fontSize: 20, cursor: "pointer" }}>×</button>
+            </div>
+            {drafts.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 24, color: "#444", fontSize: 12 }}>대기중인 초안이 없습니다</div>
+            ) : (
+              drafts.map(d => (
+                <div key={d.id} style={{ background: "rgba(255,255,255,0.02)", borderRadius: 10, padding: 14, border: "1px solid rgba(255,255,255,0.04)", marginBottom: 10 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "#E8A87C", marginBottom: 4 }}>{d.company || d.name}</div>
+                  <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 6, color: "#CCC" }}>{d.subject}</div>
+                  <div style={{ fontSize: 11, color: "#888", lineHeight: 1.6, marginBottom: 10, whiteSpace: "pre-wrap", maxHeight: 120, overflow: "hidden" }}>{d.body}</div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <a
+                      href={`mailto:?subject=${encodeURIComponent(d.subject)}&body=${encodeURIComponent(d.body)}`}
+                      style={{ padding: "5px 10px", borderRadius: 6, fontSize: 10, fontWeight: 500, background: "rgba(59,122,109,0.15)", color: "#6DCDB8", textDecoration: "none", fontFamily: "inherit" }}
+                    >✉️ Gmail로 열기</a>
+                    <button onClick={() => updateDraftStatus(d.id, "sent")} style={{ padding: "5px 10px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 10, fontWeight: 500, fontFamily: "inherit", background: "rgba(59,122,109,0.1)", color: "#6DCDB8" }}>✅ 발송 완료</button>
+                    <button onClick={() => updateDraftStatus(d.id, "skipped")} style={{ padding: "5px 10px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 10, fontWeight: 500, fontFamily: "inherit", background: "rgba(255,255,255,0.04)", color: "#666" }}>🗑️ 스킵</button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         )}
       </main>
 

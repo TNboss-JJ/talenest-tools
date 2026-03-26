@@ -1,5 +1,5 @@
 "use client";
-import { useState, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 const PRESETS = [
   { label: "서울 어린이집", query: "어린이집", location: "서울" },
@@ -27,6 +27,22 @@ export default function MapScraperPage() {
   const [selected, setSelected] = useState(new Set());
   const [groupTag, setGroupTag] = useState("");
   const [importing, setImporting] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [toast, setToast] = useState(null);
+
+  const fetchHistory = useCallback(async () => {
+    try {
+      const res = await fetch("/api/map-scraper", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "history" })
+      });
+      if (res.ok) { const data = await res.json(); setHistory(data.history || []); }
+    } catch (e) { /* ignore */ }
+  }, []);
+
+  useEffect(() => { fetchHistory(); }, [fetchHistory]);
+
+  const alreadyScraped = history.some(h => h.query === query && h.location === location);
 
   const searchPlaces = useCallback(async (pageToken) => {
     setLoading(true);
@@ -95,6 +111,11 @@ export default function MapScraperPage() {
       setAnalyzed(data.analyzed);
       setSavedCount(data.saved);
       setStep("done");
+      fetchHistory();
+      if (data.auto_saved > 0 || data.drafts_created > 0) {
+        setToast(`70점 이상 ${data.auto_saved}건 자동 CRM 저장 + 메일 초안 ${data.drafts_created}건 생성`);
+        setTimeout(() => setToast(null), 6000);
+      }
     } catch (e) { setError(e.message); }
     setLoading(false);
     setLoadingMsg("");
@@ -186,8 +207,11 @@ export default function MapScraperPage() {
                 <input value={location} onChange={e => setLocation(e.target.value)} placeholder="서울 강남구" style={S.input}
                   onKeyDown={e => e.key === "Enter" && searchPlaces()} />
               </div>
-              <div style={{ display: "flex", alignItems: "flex-end" }}>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 6 }}>
                 <button onClick={() => searchPlaces()} disabled={loading} style={S.btn(true)}>검색</button>
+                {alreadyScraped && (
+                  <span style={{ fontSize: 10, color: "#E8A87C", fontWeight: 500, whiteSpace: "nowrap" }}>⚠️ 이미 긁은 지역</span>
+                )}
               </div>
             </div>
 
@@ -197,6 +221,26 @@ export default function MapScraperPage() {
                   style={{ ...S.btn(false), fontSize: 11 }}>{p.label}</button>
               ))}
             </div>
+
+            {/* Scrape History */}
+            {history.length > 0 && (
+              <div style={{ marginTop: 20 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "#555", marginBottom: 8 }}>최근 스크랩 이력</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {history.slice(0, 20).map((h, i) => (
+                    <div key={i} onClick={() => { setQuery(h.query); setLocation(h.location); }}
+                      style={{ ...S.card(false), padding: "8px 12px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 11, color: "#CCC" }}>
+                        {h.location} {h.query}
+                      </span>
+                      <span style={{ fontSize: 10, color: "#666" }}>
+                        {new Date(h.created_at).toLocaleDateString("ko-KR")} · {h.total_found}건 ({h.auto_saved}건 저장)
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -326,6 +370,12 @@ export default function MapScraperPage() {
           <div style={{ marginTop: 12, padding: 12, background: "rgba(220,80,80,0.06)", border: "1px solid rgba(220,80,80,0.12)", borderRadius: 8, fontSize: 11, color: "#E88" }}>{error}</div>
         )}
       </main>
+
+      {toast && (
+        <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", padding: "12px 24px", background: "rgba(59,122,109,0.95)", color: "#F7F2EA", borderRadius: 10, fontSize: 12, fontWeight: 500, zIndex: 1000, boxShadow: "0 4px 20px rgba(0,0,0,0.3)" }}>
+          ✅ {toast}
+        </div>
+      )}
 
       {loading && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(15,17,23,0.85)", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12, zIndex: 999, backdropFilter: "blur(8px)" }}>
