@@ -90,7 +90,7 @@ export default function MonitorPage() {
   };
 
   return (
-    <div style={{ fontFamily: "'DM Sans', 'Pretendard', sans-serif", minHeight: "100vh", background: "#0F1117", color: "#E8E6E1" }}>
+    <div style={{ minHeight: "100vh", background: "#F9F7F3", color: "#1a1a1a", padding: "24px" }}>
       <div className="max-w-4xl mx-auto space-y-6">
 
         {/* 헤더 */}
@@ -116,7 +116,7 @@ export default function MonitorPage() {
               const latest = latestStatus(t.url);
               const uptime = uptimePercent(t.url);
               return (
-                <div key={t.id} className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+                <div key={t.id} className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm" style={{ backgroundColor: "white" }}>
                   <div className="text-xs text-gray-400 mb-1 truncate">{t.label}</div>
                   <StatusBadge status={latest?.status} />
                   {latest?.response_time && (
@@ -132,7 +132,7 @@ export default function MonitorPage() {
         )}
 
         {/* 모니터링 대상 목록 */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden" style={{ backgroundColor: "white" }}>
           <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
             <h2 className="font-semibold text-gray-800">모니터링 대상</h2>
             <span className="text-xs text-gray-400">{targets.length}개 등록</span>
@@ -204,7 +204,7 @@ export default function MonitorPage() {
 
         {/* 최근 체크 로그 */}
         {checks.length > 0 && (
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden" style={{ backgroundColor: "white" }}>
             <div className="px-5 py-4 border-b border-gray-50">
               <h2 className="font-semibold text-gray-800">최근 24시간 로그</h2>
             </div>

@@ -89,7 +89,7 @@ export default function LegalPage() {
   const overdue = items.filter((i) => i.days_left !== null && i.days_left < 0);
 
   return (
-    <div style={{ fontFamily: "'DM Sans', 'Pretendard', sans-serif", minHeight: "100vh", background: "#0F1117", color: "#E8E6E1" }}>
+    <div style={{ minHeight: "100vh", background: "#F9F7F3", color: "#1a1a1a", padding: "24px" }}>
       <div className="max-w-4xl mx-auto space-y-6">
 
         {/* 헤더 */}
@@ -141,7 +141,7 @@ export default function LegalPage() {
         </div>
 
         {/* 항목 목록 */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden" style={{ backgroundColor: "white" }}>
           {loading ? (
             <div className="p-8 text-center text-gray-400">로딩 중...</div>
           ) : items.length === 0 ? (
@@ -205,7 +205,7 @@ export default function LegalPage() {
         {/* 추가/수정 폼 모달 */}
         {showForm && (
           <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" style={{ backgroundColor: "white" }}>
               <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                 <h3 className="font-semibold text-gray-800">{editItem ? "항목 수정" : "항목 추가"}</h3>
                 <button onClick={() => { setShowForm(false); setEditItem(null); }} className="text-gray-400 hover:text-gray-600">✕</button>

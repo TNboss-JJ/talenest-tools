@@ -120,7 +120,7 @@ export default function SocialPage() {
   const scheduled = posts.filter((p) => p.status === "scheduled" && p.scheduled_at);
 
   return (
-    <div style={{ fontFamily: "'DM Sans', 'Pretendard', sans-serif", minHeight: "100vh", background: "#0F1117", color: "#E8E6E1" }}>
+    <div style={{ minHeight: "100vh", background: "#F9F7F3", color: "#1a1a1a", padding: "24px" }}>
       <div className="max-w-4xl mx-auto space-y-6">
 
         {/* 헤더 */}
@@ -154,7 +154,7 @@ export default function SocialPage() {
             { label: "예약", count: scheduled.length, color: "text-blue-500" },
             { label: "발행", count: posts.filter(p => p.status === "posted").length, color: "text-emerald-500" },
           ].map((s) => (
-            <div key={s.label} className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm text-center">
+            <div key={s.label} className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm text-center" style={{ backgroundColor: "white" }}>
               <div className={`text-2xl font-bold ${s.color}`}>{s.count}</div>
               <div className="text-xs text-gray-400">{s.label}</div>
             </div>
@@ -183,7 +183,7 @@ export default function SocialPage() {
         </div>
 
         {/* 포스트 목록 */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden" style={{ backgroundColor: "white" }}>
           {loading ? (
             <div className="p-8 text-center text-gray-400">로딩 중...</div>
           ) : posts.length === 0 ? (
@@ -255,7 +255,7 @@ export default function SocialPage() {
         {/* AI 초안 생성 폼 */}
         {aiMode && (
           <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg" style={{ backgroundColor: "white" }}>
               <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                 <h3 className="font-semibold text-gray-800">✨ AI 초안 생성</h3>
                 <button onClick={() => setAiMode(false)} className="text-gray-400">✕</button>
@@ -326,7 +326,7 @@ export default function SocialPage() {
         {/* 포스트 작성/편집 폼 */}
         {showForm && (
           <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" style={{ backgroundColor: "white" }}>
               <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                 <h3 className="font-semibold text-gray-800">
                   {aiResult ? "✨ AI 초안 편집 & 저장" : "포스트 작성"}
